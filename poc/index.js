@@ -25,6 +25,7 @@
 import three from 'three';
 
 const loader = new three.OBJLoader();
+const recast = window.recast;
 
 function load() {
     return new Promise((resolve, reject) => {
@@ -35,7 +36,6 @@ function load() {
         object.traverse(function(child) {
             if (child instanceof three.Mesh) {
                 child.material.side = three.DoubleSide;
-                // child.material.shading = THREE.FlatShading;
             }
         });
         
@@ -47,9 +47,13 @@ function load() {
 
 function loadNavmesh() {
     return new Promise((resolve, reject) => {
-       resolve(true);
-    }).then(object => {
-        return object;
+        recast.OBJLoader('simple.obj', function() {
+            recast.buildTiled();
+            
+            resolve();
+        });
+    }).then(() => {
+        return true;
     }).catch(err => {
         console.error(err);
     });
@@ -60,12 +64,12 @@ window.onload = async function() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
+    recast.setGLContext(renderer.context);
+
     const scene = new three.Scene();
-    const [ object, navmesh ] = await Promise.all([load(), loadNavmesh()]);
+    const [ object ] = await Promise.all([load(), loadNavmesh()]);
     scene.add(object);
-    
-    console.log(navmesh);
-    
+
     const light = new three.AmbientLight(0x404040);
     scene.add(light);
     
@@ -77,12 +81,45 @@ window.onload = async function() {
     camera.position.z = 50;
     camera.position.y = 20;
     camera.lookAt(new three.Vector3(0, 0, 0));
+
+    const controls = new three.OrbitControls(camera, renderer.domElement);
+    controls.addEventListener('change', function(){
+        renderer.render(scene, camera);
+    });
     
-    function render() {
-    	requestAnimationFrame(render);
+    recast.initCrowd(1000, 1.0);
+
+    const agent = recast.addAgent({
+                      position: {
+                          x: -25.8850,
+                          y: -1.64166,
+                          z: -5.41350
+                      },
+                      radius: 1.0,
+                      height: 1.0,
+                      maxAcceleration: 1.0,
+                      maxSpeed: 2.0,
+                      updateFlags: 0, // && recast.CROWD_OBSTACLE_AVOIDANCE, // & recast.CROWD_ANTICIPATE_TURNS & recast.CROWD_OPTIMIZE_TOPO & recast.CROWD_SEPARATION,
+                      separationWeight: 20.0
+                  });
+
+    var delta, oldTime, newTime = 0;
+    
+    (function loop() {
+    	requestAnimationFrame(loop);
+    	
+    	newTime = Date.now();
+    	
+    	delta = newTime - oldTime;
+    	if (delta > 17) {
+    	    delta = 17;
+    	}
+    	
+    	oldTime = newTime;
+    	
     	renderer.render(scene, camera);
-    }
-    render();
+    	recast.crowdUpdate(delta / 1000);
+    })();
 };
 
 /**
